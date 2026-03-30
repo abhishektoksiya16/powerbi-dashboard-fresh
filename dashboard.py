@@ -1,125 +1,160 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import numpy as np
 from datetime import datetime
 
-st.set_page_config(page_title="Power BI Dashboard", layout="wide")
+st.set_page_config(page_title="Power BI Dashboard", layout="wide", page_icon="📊")
 
-st.title("📊 Interactive Power BI Dashboard")
-st.markdown("---")
+st.title("📊 **Universal Power BI Dashboard**")
+st.markdown("**Works with ANY Excel columns automatically!**")
 
 # File upload
-uploaded_file = st.file_uploader("📁 Upload Excel file", type=["xlsx", "xls"])
+uploaded_file = st.file_uploader("📁 Upload Excel", type=["xlsx", "xls"])
 
 if uploaded_file is not None:
-    # Load data
-    @st.cache_data
-    def load_excel(file):
-        return pd.read_excel(file)
-    
-    df = load_excel(uploaded_file)
-    
-    st.success(f"✅ Loaded **{len(df)} rows** | **{len(df.columns)} columns**")
-    
-    # Data preview
-    col1, col2 = st.columns([3,1])
-    with col1:
-        st.subheader("📋 Data Preview")
+    try:
+        df = pd.read_excel(uploaded_file)
+        st.success(f"✅ Loaded **{len(df)} rows x {len(df.columns)} columns**")
+        
+        # Show all columns
+        st.subheader("📋 **Your Data**")
         st.dataframe(df.head(10), use_container_width=True)
-    
-    with col2:
-        st.subheader("📈 Summary")
-        st.metric("Total Records", len(df))
-        st.metric("Avg Value", f"${df.select_dtypes(include=[np.number]).mean().mean():.0f}")
-    
-    # Filters
-    st.subheader("🔧 Real-time Filters")
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        # Category filter
-        cat_cols = df.select_dtypes(include=['object']).columns
-        if len(cat_cols) > 0:
-            selected_cat = st.multiselect(
-                f"Filter {cat_cols[0]}",
-                options=df[cat_cols[0]].dropna().unique()
-            )
-            if selected_cat:
-                df_filtered = df[df[cat_cols[0]].isin(selected_cat)]
-            else:
-                df_filtered = df
-        else:
-            df_filtered = df
-    
-    with col2:
-        # Numeric filter
+        
+        # Column analysis
+        st.subheader("🔍 **Column Types Detected**")
+        col1, col2 = st.columns(2)
+        with col1:
+            numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+            st.metric("📊 Numeric Columns", len(numeric_cols))
+            if numeric_cols:
+                st.write(numeric_cols)
+        with col2:
+            text_cols = df.select_dtypes(include=['object']).columns.tolist()
+            st.metric("🏷️ Text Columns", len(text_cols))
+            if text_cols:
+                st.write(text_cols)
+        
+        # Filters - Dynamic based on YOUR columns
+        st.subheader("🔧 **Real-time Filters**")
+        filtered_df = df.copy()
+        
+        # Filter 1: First text column
+        text_cols = df.select_dtypes(include=['object']).columns
+        if len(text_cols) > 0:
+            col1, col2 = st.columns(2)
+            with col1:
+                selected = st.multiselect(
+                    f"Filter {text_cols[0]}",
+                    options=sorted(df[text_cols[0]].dropna().unique()),
+                    default=sorted(df[text_cols[0]].dropna().unique())
+                )
+                if selected:
+                    filtered_df = filtered_df[filtered_df[text_cols[0]].isin(selected)]
+        
+        # Filter 2: First numeric column
         num_cols = df.select_dtypes(include=[np.number]).columns
         if len(num_cols) > 0:
-            num_col = num_cols[0]
-            min_val, max_val = st.slider(
-                f"{num_col} Range",
-                float(df[num_col].min()),
-                float(df[num_col].max()),
-                (float(df[num_col].min()), float(df[num_col].max()))
-            )
-            df_filtered = df_filtered[(df_filtered[num_col] >= min_val) & (df_filtered[num_col] <= max_val)]
-        else:
-            df_filtered = df_filtered
-    
-    # Charts
-    st.subheader("📊 Auto-Generated Charts")
-    
-    # Get columns for charts
-    num_cols = df_filtered.select_dtypes(include=[np.number]).columns.tolist()
-    cat_cols = df_filtered.select_dtypes(include=['object']).columns.tolist()
-    
-    if len(num_cols) > 0 and len(cat_cols) > 0:
-        # Row 1: Bar + Pie
-        col1, col2 = st.columns(2)
+            with col2:
+                col_range = st.slider(
+                    f"{num_cols[0]} Range",
+                    float(df[num_cols[0]].min()),
+                    float(df[num_cols[0]].max()),
+                    (float(df[num_cols[0]].min()), float(df[num_cols[0]].max()))
+                )
+                filtered_df = filtered_df[
+                    (filtered_df[num_cols[0]] >= col_range[0]) & 
+                    (filtered_df[num_cols[0]] <= col_range[1])
+                ]
+        
+        st.success(f"✅ Filtered to **{len(filtered_df)} rows**")
+        
+        # CHARTS - Guaranteed to work with ANY data
+        st.subheader("📈 **Charts (Click to Interact)**")
+        
+        # Chart 1: Always works - Top categories/values
+        col1, col2, col3 = st.columns(3)
         
         with col1:
-            fig_bar = px.bar(df_filtered, x=cat_cols[0], y=num_cols[0],
-                           title="📈 Bar Chart")
-            st.plotly_chart(fig_bar, use_container_width=True)
+            st.markdown("**📊 Bar Chart**")
+            if len(num_cols) > 0 and len(text_cols) > 0:
+                top_data = filtered_df.groupby(text_cols[0])[num_cols[0]].sum().reset_index().head(10)
+                fig_bar = px.bar(top_data, x=text_cols[0], y=num_cols[0], 
+                               title=f"Top {text_cols[0]} by {num_cols[0]}")
+                st.plotly_chart(fig_bar, use_container_width=True)
+            else:
+                st.info("Add numeric + text columns for bar chart")
         
         with col2:
-            fig_pie = px.pie(df_filtered, values=num_cols[0], names=cat_cols[0],
-                           title="🥧 Pie Chart")
-            st.plotly_chart(fig_pie, use_container_width=True)
+            st.markdown("**🥧 Pie Chart**")
+            if len(num_cols) > 0 and len(text_cols) > 0:
+                pie_data = filtered_df.groupby(text_cols[0])[num_cols[0]].sum().reset_index().head(10)
+                fig_pie = px.pie(pie_data, values=num_cols[0], names=text_cols[0],
+                               title=f"{text_cols[0]} Distribution")
+                st.plotly_chart(fig_pie, use_container_width=True)
+            else:
+                st.info("Add numeric + text columns for pie chart")
         
-        # Row 2: Line + Scatter
-        col1, col2 = st.columns(2)
+        with col3:
+            st.markdown("**📉 Summary Stats**")
+            if len(num_cols) > 0:
+                fig_stats = go.Figure()
+                fig_stats.add_trace(go.Indicator(
+                    mode="number+gauge+delta",
+                    value=filtered_df[num_cols[0]].sum(),
+                    title={"text": f"Total {num_cols[0]}"},
+                    gauge={
+                        'axis': {'range': [None, filtered_df[num_cols[0]].max()*1.5]},
+                        'bar': {'color': "darkblue"},
+                    }
+                ))
+                st.plotly_chart(fig_stats, use_container_width=True)
+            else:
+                st.info("Add numeric columns")
         
-        with col1:
-            if len(num_cols) >= 2:
-                fig_line = px.line(df_filtered, x=cat_cols[0], y=num_cols[:2].tolist(),
-                                 title="📉 Trend Line")
-                st.plotly_chart(fig_line, use_container_width=True)
-        
-        with col2:
-            if len(num_cols) >= 2:
-                fig_scatter = px.scatter(df_filtered, x=num_cols[0], y=num_cols[1],
-                                       color=cat_cols[0] if len(cat_cols)>0 else None,
-                                       title="🔍 Scatter Plot")
+        # More charts
+        if len(num_cols) >= 2:
+            st.markdown("**🔍 Advanced Charts**")
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                fig_scatter = px.scatter(filtered_df, 
+                                       x=num_cols[0], y=num_cols[1],
+                                       color=text_cols[0] if len(text_cols)>0 else None,
+                                       title=f"{num_cols[0]} vs {num_cols[1]}")
                 st.plotly_chart(fig_scatter, use_container_width=True)
-    
-    # Download filtered data
-    csv = df_filtered.to_csv(index=False).encode('utf-8')
-    st.download_button(
-        label="📥 Download Filtered Data",
-        data=csv,
-        file_name=f"dashboard_data_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-        mime='text/csv'
-    )
+            
+            with col2:
+                fig_histogram = px.histogram(filtered_df, x=num_cols[0],
+                                           title=f"{num_cols[0]} Distribution")
+                st.plotly_chart(fig_histogram, use_container_width=True)
+        
+        # Table of filtered data
+        st.subheader("📋 **Filtered Data**")
+        st.dataframe(filtered_df, use_container_width=True)
+        
+        # Download
+        csv = filtered_df.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            "📥 Download Filtered CSV",
+            csv,
+            f"filtered_data_{datetime.now().strftime('%Y%m%d')}.csv",
+            "text/csv"
+        )
+        
+    except Exception as e:
+        st.error(f"❌ Error: {str(e)}")
+        st.info("💡 Upload a simple Excel with numbers and text columns")
 
 else:
     st.info("""
-    ### 🚀 **How to use:**
-    1. **Upload Excel file** (.xlsx or .xls)
-    2. **Apply filters** (real-time)
-    3. **View auto-charts**
-    4. **Download results**
+    **📁 Upload ANY Excel file - Charts auto-generate!**
     
-    **💡 Sample columns:** Date, Category, Revenue, Quantity
+    **Works with columns like:**
+    ```
+    Product | Sales | Quantity | Region | Date
+    Laptop  | 1000  | 10       | North  | 2024-01
+    ```
     """)
+    st.balloons()
